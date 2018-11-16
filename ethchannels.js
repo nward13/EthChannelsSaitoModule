@@ -12,6 +12,9 @@ const web3 = new Web3(new Web3.providers.WebsocketProvider('wss://rinkeby.infura
 // Contract instance
 const channelsContract = new web3.eth.Contract(contractAbi, '0x8994743c6631F2b4bfC9a97e17fb39A28b0502e1');
 
+// Signature of the correct form expected by contract (for testing purposes)
+// 0xcd06990521eada3cd060a0464c0aacc0985eeea8ffb38ed7e357d1a8a31b0716113929a39616d7dfc4cebbb7875e85f762d128a70f606f12dd54990e5f11684f1b
+
 
 //////////////////
 // CONSTRUCTOR  //
@@ -497,6 +500,7 @@ EthChannels.prototype.onConfirmation = function onConfirmation(blk, tx, conf, ap
           channel.myEthAddr, 
           channel.openBlock
         ).then(result => {
+          console.log("isChannelClosed() result from channelClosed tx confirmation (from us): ", result);
 
           // If the channel has not been closed, do not change channel state
           if (!result) {
@@ -548,8 +552,8 @@ EthChannels.prototype.requestChannelEmail = function requestChannelEmail(tx, app
   + '<div id="open_channel_tx" style="display:none;">'
     + '<p>Please use your Eth address, ' + '<span id="channel_sender_eth_addr"></span>, '
     + 'to send the following transaction to the payment channels contract on the Rinkeby testnet:'
-    + '<div><strong>openChannel(<br>&emsp;' + '<span class="channel_recipient_eth_addr">\''
-    + txmsg.data.recipientEthAddr + '\'</span>' + ',<br>&emsp;{ value: ' + '<span id="deposit"></span>' + ' }<br>)'
+    + '<div><strong>openChannel(<br>&emsp;' + '<span class="channel_recipient_eth_addr">'
+    + txmsg.data.recipientEthAddr + '</span>' + ',<br>&emsp;{ value: ' + '<span id="deposit"></span>' + ' }<br>)'
     + '</strong></div>' + '<br>'
     +'This can be done using Geth or Remix. The contract can be found at Rinkeby address '
     +'<a href="https://rinkeby.etherscan.io/address/0x8994743c6631f2b4bfc9a97e17fb39a28b0502e1" target="_blank">'
@@ -684,8 +688,8 @@ EthChannels.prototype.recipientPaymentConfirmEmail = function recipientPaymentCo
     +'<div id="close_channel_page_2" style="display:none">'
       +'<p>Please use your Eth address, ' + channel.myEthAddr
       +', to send the following transaction to the payment channels contract on the Rinkeby testnet:'
-      +'<div><strong>closeChannel(<br>&emsp;\'' + channel.peerEthAddr + '\',<br>&emsp;' + channel.openBlock
-      + ',<br>&emsp;' + channel.myBal + ',<br>&emsp;\'' + channel.lastSig + '\'<br>)</strong></div>'
+      +'<div><strong>closeChannel(<br>&emsp;' + channel.peerEthAddr + ',<br>&emsp;' + channel.openBlock
+      + ',<br>&emsp;' + channel.myBal + ',<br>&emsp;' + channel.lastSig + '<br>)</strong></div>'
       +'<br>'
       +'This can be done using Geth or Remix. The contract can be found at Rinkeby address '
       +'<a href="https://rinkeby.etherscan.io/address/0x8994743c6631f2b4bfc9a97e17fb39a28b0502e1" target="_blank">'
@@ -1039,15 +1043,14 @@ ModTemplate.prototype.attachEmailEvents = function attachEmailEvents(app) {
   
   $('#open_tx_submitted').off().on('click', function() {
 
+    var peerEthAddr = $('.channel_recipient_eth_addr').html();
     var peerSaitoAddr = $('.lightbox_message_from_address').html();
-
-    var channelId = ec_self.getOutgoingIndex(peerSaitoAddr);
 
     var openData = $('#open_form').serializeArray();
     
     var txData = {
                     senderEthAddr:openData[0].value,
-                    recipientEthAddr:ec_self.outgoingChannels[channelId].peerEthAddr, 
+                    recipientEthAddr:peerEthAddr, 
                     deposit:openData[1].value
                   };
 
@@ -1212,14 +1215,14 @@ EthChannels.prototype.getMsgToSign = function getMsgToSign(sender, recipient, op
   var key = web3Utils.soliditySha3(
     {type: 'address', value: sender},
     {type: 'address', value: recipient},
-    {type: 'uint32', value: new BN(openBlock.toString())}
+    {type: 'uint32', value: new BN(openBlock)}
   );
 
   // Get the msg for the user to sign - keccak256(channelKey, amt)
   // Note that transfer amount is hashed as a uint72
   var msgToSign = web3Utils.soliditySha3(
     {type: 'bytes32', value: key},
-    {type: 'uint72', value: new BN(amt.toString())}
+    {type: 'uint72', value: new BN(amt)}
   );
 
   return msgToSign;
@@ -1229,9 +1232,23 @@ EthChannels.prototype.getMsgToSign = function getMsgToSign(sender, recipient, op
 // Verify that the signature can be used to close the channel
 EthChannels.prototype.verifySig = function verifySig(sender, recipient, openBlock, amt, sig) {
 
+  ///////
+  // Pseudo return value to make testing of the saito module logic easier
+  return new Promise(function(resolve, reject) {
+    resolve(true);
+  });
+  ///////
+
   // Call the Channels contract verifySignature function
-  return channelsContract.methods.verifySignature(sender, recipient, openBlock, amt.toString(), sig).call()
+  return channelsContract.methods.verifySignature(sender, recipient, openBlock, amt, sig).call()
     .then((result) => { 
+      console.log("Result from verifySig(): ", result);
+
+      // Check signature length. This should ultimately be fixed in the contract,
+      // but is a temporary fix for the issue mentioned above
+      if (sig.length != 65) {
+        return false;
+      }
       
       // Return bool from the contract call
       return result;
@@ -1246,6 +1263,13 @@ EthChannels.prototype.verifySig = function verifySig(sender, recipient, openBloc
 
 // Filter contract events to check if a channel has been closed
 EthChannels.prototype.isChannelClosed = function isChannelClosed(sender, recipient, openBlock) {
+
+  ///////
+  // Pseudo return value to make testing of the saito module logic easier
+  return new Promise(function(resolve, reject) {
+    resolve(true);
+  });
+  ///////
   
   return new Promise(function(resolve, reject) {
     channelsContract.getPastEvents('ChannelClosed', {
@@ -1262,6 +1286,7 @@ EthChannels.prototype.isChannelClosed = function isChannelClosed(sender, recipie
         console.log("Error from isChannelClosed(): ", error);
         reject(error);
       } else {
+        console.log("Events from isChannelClosed(): ", events);
 
         // If the returned events array contains an event that matches
         // the given parameters, then the channel has been closed
@@ -1285,6 +1310,13 @@ EthChannels.prototype.isChannelClosed = function isChannelClosed(sender, recipie
 // or ask for it as an input from any non-email based interactions
 // with the module
 EthChannels.prototype.getOpenBlock = function getOpenBlock(sender, recipient) {
+
+  ///////
+  // Pseudo return value to make testing of the saito module logic easier
+  return new Promise(function(resolve, reject) {
+    resolve(13);
+  });
+  ///////
   
   return new Promise(function(resolve, reject) {
     channelsContract.getPastEvents('ChannelCreated', {
@@ -1299,11 +1331,12 @@ EthChannels.prototype.getOpenBlock = function getOpenBlock(sender, recipient) {
           console.log("Error from getOpenBlock: ", error);
           reject(error);
         } else {
+          console.log("Events from getOpenBlock: ", events);
 
           if (events.length) {
             // Return the blockNumber at which the most recent ChannelCreated
             // event matching the sender and recipient addresses was emitted
-            resolve((events[events.length - 1].blockNumber).toString());  
+            resolve(events[events.length - 1].blockNumber);  
           } else {
             // If no events were found, resolve promise and return 0
             resolve(0);
@@ -1323,8 +1356,16 @@ EthChannels.prototype.getOpenBlock = function getOpenBlock(sender, recipient) {
 // open
 EthChannels.prototype.isChannelOpen = function isChannelOpen(sender, recipient, openBlock, deposit) {
 
+  ///////
+  // Pseudo return value to make testing of the saito module logic easier
+  return new Promise(function(resolve, reject) {
+    resolve(true);
+  });
+  ///////
+
   return channelsContract.methods.getChannelDeposit(sender, recipient, openBlock).call()
     .then((result) => {
+      console.log("Deposit from isChannelOpen(): ", result.toString());
 
       if (deposit === 0) {
         return false;
