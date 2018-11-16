@@ -4,5 +4,7 @@ The Channels contract is currently deployed on the Rinkeby testnet at: 0x8994743
   
 The Ethereum contract history and deployed code can be found at: https://rinkeby.etherscan.io/address/0x8994743c6631f2b4bfc9a97e17fb39a28b0502e1  
   
+A basic demo of the module can be found at: https://youtu.be/F7OoU3e8OrE
+  
 The "ui-only" branch simulates the EthChannels module without making calls to the Rinkeby contract. It can be used to demo the entire module without submitting Ethereum transactions separately.
 
